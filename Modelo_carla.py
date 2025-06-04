@@ -8,6 +8,7 @@ pasta_destino = os.path.join(os.path.dirname(__file__), "Images")
 
 os.makedirs(pasta_destino, exist_ok=True)
 
+print("teste")
 
 params = {
     'πv': 6.80e-1,
