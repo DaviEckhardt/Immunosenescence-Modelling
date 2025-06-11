@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import os
 
 
-pasta_destino = os.path.join(os.path.dirname(__file__), "Images")
+pasta_destino = os.path.join(os.path.dirname(__file__), "Images for reinjection")
 
 os.makedirs(pasta_destino, exist_ok=True)
 
@@ -71,11 +71,26 @@ def immune_response(y, t, p):
 # Condições iniciais
 y0 = [724, 1e6, 0, 1e6, 0, 5e5, 0, 2.5e5, 0, 0, 0, 150]
 
+
+# Tempo para chegar aos 10 anos (sem reforço)
+t1 = np.concatenate([
+    np.linspace(0, 60, 300, endpoint=False),       # 60 primeiros dias
+    np.linspace(60, 3650, 700)                     # resto do tempo
+])
+
 # Tempo de simulação (dias)
-t = np.linspace(0, 60, 300)
+t2 = np.linspace(0, 60, 300)
+
 
 # Resolver o sistema
-sol = odeint(immune_response, y0, t, args=(params,))
+sol1 = odeint(immune_response, y0, t1, args=(params,))
+
+# Preparando para a reinjeção
+y_reinj = sol1[-1].copy()
+y_reinj[0] += 724
+
+sol2 = odeint(immune_response, y_reinj, t2, args=(params,))
+
 
 # Plotar os resultados
 labels = {
@@ -94,15 +109,33 @@ labels = {
 }
 
 chaves = list(labels.keys())
+
+# Índices onde t1 <= 60
+idx_t1_60 = t1 <= 60
+t1_cut = t1[idx_t1_60]
+sol1_cut = sol1[idx_t1_60]
+
 for i, chave in enumerate(chaves):
+    # Vacinação inicial
     plt.figure(figsize=(7, 4))
-    plt.plot(t, sol[:, i], label=labels[chave], color='tab:blue')
-    plt.title(labels[chave])
+    plt.plot(t1_cut, sol1_cut[:, i], label=f"{labels[chave]} (vacinação inicial)", color='tab:blue')
+    plt.title(f"{labels[chave]} - 1ª vacinação (60 dias)")
     plt.xlabel("Tempo (dias)")
     plt.ylabel("Quantidade")
     plt.grid(True)
-    plt.tight_layout()
     plt.legend()
-    caminho_arquivo = os.path.join(pasta_destino, f"{chave}.png")
-    plt.savefig(caminho_arquivo, dpi=150)
+    plt.tight_layout()
+    plt.savefig(os.path.join(pasta_destino, f"{chave}_primeira_60dias.png"), dpi=150)
+    plt.show()
+
+    # Reforço vacinal 
+    plt.figure(figsize=(7, 4))
+    plt.plot(t2, sol2[:, i], label=f"{labels[chave]} (reforço)", color='tab:green')
+    plt.title(f"{labels[chave]} - Reforço após 10 anos (60 dias)")
+    plt.xlabel("Tempo (dias)")
+    plt.ylabel("Quantidade")
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join(pasta_destino, f"{chave}_reforco_60dias.png"), dpi=150)
     plt.show()
