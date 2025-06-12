@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import os
 
 
-pasta_destino = os.path.join(os.path.dirname(__file__), "Images for variation")
+pasta_destino = os.path.join(os.path.dirname(__file__), "Images for variation and after ten years")
 
 os.makedirs(pasta_destino, exist_ok=True)
 
@@ -74,7 +74,12 @@ valores_virus = [724, 1000, 1234, 7522, 725]
 cores = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple']
 
 
-t = np.linspace(0, 60, 300)
+t1 = np.concatenate([
+    np.linspace(0, 60, 300, endpoint=False),
+    np.linspace(60, 3650, 700)
+])
+
+t2 = np.linspace(0, 60, 300)
 
 # Condições iniciais
 # y0 = [724, 1e6, 0, 1e6, 0, 5e5, 0, 2.5e5, 0, 0, 0, 150]
@@ -119,28 +124,52 @@ labels = {
 
 
 chaves = list(labels.keys())
-solucoes = []
+solucoes_primeira_dose = []
+solucoes_segunda_dose = []
 
 
 for V0 in valores_virus:
     y0 = [V0, 1e6, 0, 1e6, 0, 5e5, 0, 2.5e5, 0, 0, 0, 150]
-    sol = odeint(immune_response, y0, t, args=(params,))
-    solucoes.append(sol)
+    sol1 = odeint(immune_response, y0, t1, args=(params,))
+    sol1_cut = sol1[t1 < 60]
 
-# Plotar sobreposição para cada variável
+    y_reinj = sol1[-1].copy()
+    y_reinj[0] += V0  # Reinjetar o mesmo valor de vírus
+
+
+    # Simulação pós-reforço
+    sol2 = odeint(immune_response, y_reinj, t2, args=(params,))
+    
+    solucoes_primeira_dose.append(sol1_cut)
+    solucoes_segunda_dose.append(sol2)
+
 for i, chave in enumerate(chaves):
+    # Gráfico da 1ª dose
     plt.figure(figsize=(8, 5))
-    for j, sol in enumerate(solucoes):
-        plt.plot(t, sol[:, i], label=f'V0 = {valores_virus[j]}', color=cores[j])
-    plt.title(f"{labels[chave]} (variação da dose inicial de vírus)")
+    for j, sol in enumerate(solucoes_primeira_dose):
+        plt.plot(t2, sol[:, i], label=f'V0 = {valores_virus[j]}', color=cores[j])
+    plt.title(f"{labels[chave]} – 1ª vacinação (60 dias)")
     plt.xlabel("Tempo (dias)")
     plt.ylabel("Quantidade")
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
-    caminho = os.path.join(pasta_destino, f"{chave}_variacao_virus.png")
-    plt.savefig(caminho, dpi=150)
+    plt.savefig(os.path.join(pasta_destino, f"{chave}_primeira_variacao.png"), dpi=150)
     plt.show()
+
+    # Gráfico do reforço
+    plt.figure(figsize=(8, 5))
+    for j, sol in enumerate(solucoes_segunda_dose):
+        plt.plot(t2, sol[:, i], label=f'V0 = {valores_virus[j]}', color=cores[j])
+    plt.title(f"{labels[chave]} – reforço após 10 anos (60 dias)")
+    plt.xlabel("Tempo (dias)")
+    plt.ylabel("Quantidade")
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join(pasta_destino, f"{chave}_reforco_variacao.png"), dpi=150)
+    plt.show()
+
 
 
 
