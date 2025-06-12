@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import os
 
 
-pasta_destino = os.path.join(os.path.dirname(__file__), "Images for reinjection")
+pasta_destino = os.path.join(os.path.dirname(__file__), "Images for variation")
 
 os.makedirs(pasta_destino, exist_ok=True)
 
@@ -68,28 +68,36 @@ def immune_response(y, t, p):
 
     return [dV, dAp, dApm, dThn, dThe, dTkn, dTke, dB, dPs, dPl, dBm, dA]
 
+
+
+valores_virus = [724, 1000, 1234, 7522, 725]
+cores = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple']
+
+
+t = np.linspace(0, 60, 300)
+
 # Condições iniciais
-y0 = [724, 1e6, 0, 1e6, 0, 5e5, 0, 2.5e5, 0, 0, 0, 150]
+# y0 = [724, 1e6, 0, 1e6, 0, 5e5, 0, 2.5e5, 0, 0, 0, 150]
 
 
-# Tempo para chegar aos 10 anos (sem reforço)
-t1 = np.concatenate([
-    np.linspace(0, 60, 300, endpoint=False),       # 60 primeiros dias
-    np.linspace(60, 3650, 700)                     # resto do tempo
-])
+# # Tempo para chegar aos 10 anos (sem reforço)
+# t1 = np.concatenate([
+#     np.linspace(0, 60, 300, endpoint=False),       # 60 primeiros dias
+#     np.linspace(60, 3650, 700)                     # resto do tempo
+# ])
 
-# Tempo de simulação (dias)
-t2 = np.linspace(0, 60, 300)
+# # Tempo de simulação (dias)
+# t2 = np.linspace(0, 60, 300)
 
 
-# Resolver o sistema
-sol1 = odeint(immune_response, y0, t1, args=(params,))
+# # Resolver o sistema
+# sol1 = odeint(immune_response, y0, t1, args=(params,))
 
-# Preparando para a reinjeção
-y_reinj = sol1[-1].copy()
-y_reinj[0] += 724
+# # Preparando para a reinjeção
+# y_reinj = sol1[-1].copy()
+# y_reinj[0] += 724
 
-sol2 = odeint(immune_response, y_reinj, t2, args=(params,))
+# sol2 = odeint(immune_response, y_reinj, t2, args=(params,))
 
 
 # Plotar os resultados
@@ -108,34 +116,61 @@ labels = {
     "A": "Anticorpos"
 }
 
+
+
 chaves = list(labels.keys())
+solucoes = []
 
-# Índices onde t1 <= 60
-idx_t1_60 = t1 <= 60
-t1_cut = t1[idx_t1_60]
-sol1_cut = sol1[idx_t1_60]
 
+for V0 in valores_virus:
+    y0 = [V0, 1e6, 0, 1e6, 0, 5e5, 0, 2.5e5, 0, 0, 0, 150]
+    sol = odeint(immune_response, y0, t, args=(params,))
+    solucoes.append(sol)
+
+# Plotar sobreposição para cada variável
 for i, chave in enumerate(chaves):
-    # Vacinação inicial
-    plt.figure(figsize=(7, 4))
-    plt.plot(t1_cut, sol1_cut[:, i], label=f"{labels[chave]} (vacinação inicial)", color='tab:blue')
-    plt.title(f"{labels[chave]} - 1ª vacinação (60 dias)")
+    plt.figure(figsize=(8, 5))
+    for j, sol in enumerate(solucoes):
+        plt.plot(t, sol[:, i], label=f'V0 = {valores_virus[j]}', color=cores[j])
+    plt.title(f"{labels[chave]} (variação da dose inicial de vírus)")
     plt.xlabel("Tempo (dias)")
     plt.ylabel("Quantidade")
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
-    plt.savefig(os.path.join(pasta_destino, f"{chave}_primeira_60dias.png"), dpi=150)
+    caminho = os.path.join(pasta_destino, f"{chave}_variacao_virus.png")
+    plt.savefig(caminho, dpi=150)
     plt.show()
 
-    # Reforço vacinal 
-    plt.figure(figsize=(7, 4))
-    plt.plot(t2, sol2[:, i], label=f"{labels[chave]} (reforço)", color='tab:green')
-    plt.title(f"{labels[chave]} - Reforço após 10 anos (60 dias)")
-    plt.xlabel("Tempo (dias)")
-    plt.ylabel("Quantidade")
-    plt.grid(True)
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(os.path.join(pasta_destino, f"{chave}_reforco_60dias.png"), dpi=150)
-    plt.show()
+
+
+
+# # Índices onde t1 <= 60
+# idx_t1_60 = t1 <= 60
+# t1_cut = t1[idx_t1_60]
+# sol1_cut = sol1[idx_t1_60]
+
+# for i, chave in enumerate(chaves):
+#     # Vacinação inicial
+#     plt.figure(figsize=(7, 4))
+#     plt.plot(t1_cut, sol1_cut[:, i], label=f"{labels[chave]} (vacinação inicial)", color='tab:blue')
+#     plt.title(f"{labels[chave]} - 1ª vacinação (60 dias)")
+#     plt.xlabel("Tempo (dias)")
+#     plt.ylabel("Quantidade")
+#     plt.grid(True)
+#     plt.legend()
+#     plt.tight_layout()
+#     plt.savefig(os.path.join(pasta_destino, f"{chave}_primeira_60dias.png"), dpi=150)
+#     plt.show()
+
+#     # Reforço vacinal 
+#     plt.figure(figsize=(7, 4))
+#     plt.plot(t2, sol2[:, i], label=f"{labels[chave]} (reforço)", color='tab:green')
+#     plt.title(f"{labels[chave]} - Reforço após 10 anos (60 dias)")
+#     plt.xlabel("Tempo (dias)")
+#     plt.ylabel("Quantidade")
+#     plt.grid(True)
+#     plt.legend()
+#     plt.tight_layout()
+#     plt.savefig(os.path.join(pasta_destino, f"{chave}_reforco_60dias.png"), dpi=150)
+#     plt.show()
