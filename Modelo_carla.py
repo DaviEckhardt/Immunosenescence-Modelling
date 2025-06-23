@@ -70,8 +70,8 @@ def immune_response(y, t, p):
 
 
 
-valores_virus = [724, 1000, 1234, 7522, 725]
-cores = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple']
+valores_virus = [200, 500, 724, 1000, 1234, 7522]
+cores = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown']
 
 
 t1 = np.concatenate([
