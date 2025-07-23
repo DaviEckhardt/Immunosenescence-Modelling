@@ -1,12 +1,32 @@
 
 import numpy as np
 from scipy.integrate import odeint
+from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
 import os
 
 # Criar pasta para salvar imagens
 pasta_destino = os.path.join(os.path.dirname(__file__), "Images_aging_by_age")
 os.makedirs(pasta_destino, exist_ok=True)
+
+idades = np.array([25, 35, 45, 55, 65])
+il6 = np.array([0.8, 1.0, 1.3, 1.7, 2.4])
+t = np.linspace(0, 1000, 30000)
+solucoes = {}
+
+def modelo_il6(idade, a, b):
+    return a * np.exp(b * idade)
+
+il6_params, _ = curve_fit(modelo_il6, idades, il6)
+
+idades_timo = np.array([25, 45, 65])
+t_cd4_naive = np.array([750, 350, 120])  # células/μL
+
+# Ajuste exponencial: Tprod_0 proporcional à célula naïve CD4+
+def modelo_tprod(idade, a, b):
+    return a * np.exp(-b * idade)
+
+tprod_params, _ = curve_fit(modelo_tprod, idades_timo, t_cd4_naive)
 
 # Parâmetros do modelo
 params = {
@@ -57,9 +77,9 @@ labels = [
 ]
 
 def gerar_condicoes_iniciais(idade):
-    Tprod_0 = 1e5 * np.exp(-0.05 * max(idade - 20, 0))
-    I_0 = 0.01 * max(idade - 20, 0)
-    S_0 = 0.001 * (idade - 20)**2 if idade > 20 else 0
+    Tprod_0 = modelo_tprod(idade, *tprod_params)
+    I_0 = modelo_il6(idade, *il6_params)
+    S_0 = 0.4*I_0 if idade > 20 else 0
 
     V0 = 724
     return [
@@ -94,9 +114,7 @@ def immune_response_aging(y, t, p):
     return [dV, dAp, dApm, dThn, dThe, dTkn, dTke, dB, dPs, dPl, dBm, dA, dTprod, dI, dS]
 
 # Idades a simular
-idades = [18, 40, 60, 80]
-t = np.linspace(0, 60, 300)
-solucoes = {}
+
 
 for idade in idades:
     y0 = gerar_condicoes_iniciais(idade)
@@ -117,3 +135,5 @@ for i, label in enumerate(labels):
     plt.tight_layout()
     plt.savefig(os.path.join(pasta_destino, f"{label}_por_idade.png"), dpi=150)
     plt.show()
+    
+    # Plot do ajuste IL-6
