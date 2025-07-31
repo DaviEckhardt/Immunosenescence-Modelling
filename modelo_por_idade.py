@@ -11,11 +11,11 @@ os.makedirs(pasta_destino, exist_ok=True)
 
 idades = np.array([25, 35, 45, 55, 65])
 il6 = np.array([0.8, 1.0, 1.3, 1.7, 2.4])
-t = np.linspace(0, 1000, 30000)
+t = np.linspace(0, 60, 300)
 solucoes = {}
 
-def modelo_il6(idade, a, b):
-    return a * np.exp(b * idade)
+def modelo_il6(idade, a, b, c):
+    return a / ( 1 + np.exp(b * (idade - c)))
 
 il6_params, _ = curve_fit(modelo_il6, idades, il6)
 
@@ -23,10 +23,10 @@ idades_timo = np.array([25, 45, 65])
 t_cd4_naive = np.array([750, 350, 120])  # células/μL
 
 # Ajuste exponencial: Tprod_0 proporcional à célula naïve CD4+
-def modelo_tprod(idade, a, b):
-    return a * np.exp(-b * idade)
-
-tprod_params, _ = curve_fit(modelo_tprod, idades_timo, t_cd4_naive)
+def modelo_tprod(idade, a, b, c):
+    return a * np.exp(-b * idade) + c
+ 
+tprod_params, _ = curve_fit(modelo_tprod, idades_timo, t_cd4_naive, bounds =(0, np.inf))
 
 # Parâmetros do modelo
 params = {
@@ -70,6 +70,7 @@ params = {
     'δ_S': 0.01,
     'γ_I': 2.0,
     'η_S': 1e-4,
+    'σ_base' : 1.5e-3
 }
 
 labels = [
@@ -87,15 +88,20 @@ def gerar_condicoes_iniciais(idade):
         Tprod_0, I_0, S_0
     ]
 
-def immune_response_aging(y, t, p):
+def immune_response_aging(y, t, p, idade):
     V, Ap, Apm, Thn, The, Tkn, Tke, B, Ps, Pl, Bm, A, Tprod, I, S = y
 
-    dTprod = -p['μ_T'] * Tprod
+    # Efeitos de idade
+    μ_T_eff = p['μ_T'] * (1 + 0.02 * (idade - 20))  # Decaimento da produção tímica
+    δth_eff = p['δth'] * (1 + p['γ_I'] * I + 0.005 * idade)  # Morte de Th aumentada
+    σ_base = 0.002  # produção basal de células senescentes por idade
+
+    # Dinâmicas do sistema
+    dTprod = -μ_T_eff * Tprod
     dI = p['k_I'] - p['δ_I'] * I
-    dS = p['σ_B'] * B + p['σ_T'] * The - p['δ_S'] * S
+    dS = p['σ_B'] * B + p['σ_T'] * The + σ_base * idade - p['δ_S'] * S
 
     βpl_eff = p['βpl'] * np.exp(-p['η_S'] * S)
-    δth_eff = p['δth'] * (1 + p['γ_I'] * I)
 
     dV = p['πv']*V - p['cv1']*V/(p['cv2'] + V) - p['kv1']*V*A - p['kv2']*V*Tke
     dAp = p['αap']*(1e6 - Ap) - p['βap']*Ap*(p['cap1']*V)/(p['cap2'] + V)
@@ -112,13 +118,12 @@ def immune_response_aging(y, t, p):
     dA = p['πps']*Ps + p['πpl']*Pl - p['δa']*A
 
     return [dV, dAp, dApm, dThn, dThe, dTkn, dTke, dB, dPs, dPl, dBm, dA, dTprod, dI, dS]
-
 # Idades a simular
 
 
 for idade in idades:
     y0 = gerar_condicoes_iniciais(idade)
-    sol = odeint(immune_response_aging, y0, t, args=(params,))
+    sol = odeint(lambda y, t:immune_response_aging(y, t, params, idade), y0, t)
     solucoes[idade] = sol
 
 # Plotar comparações por idade
