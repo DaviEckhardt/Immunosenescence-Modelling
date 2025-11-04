@@ -44,7 +44,7 @@ params = {
     'Tkn0': 5e5,
     'B0': 2.5e5,
 
-    'a': 0.2, 'b': 0.2, 'c': 0.2, 'd': 0.205, 'e': 0.2, 'f': 2.0, 'g': 0.2,
+    'a': 0.2, 'b': 0.2, 'c': 0.2, 'd': 0.205, 'e': 0.2, 'f': 8.0, 'g': 0.2,
     'h': 2.0, 'k': 2.0, 'r': 1.0, 's': 0.0, 
 
     'H1': 1e-4, 'H2': 1e-7, 'H3': 1e-8,  
@@ -97,7 +97,7 @@ y0 = [
     0,          # Pl (plasmócitos)
     0,          # Bm (células B de memória)
     150,        # A (anticorpos)
-    0.0,       # w (resposta imune inicial)
+    0.1,       # w (resposta imune inicial)
     0.0,        # x (dano tecidual inicial)
     0.0,        # y_inf (inflamação inicial)
 ]
