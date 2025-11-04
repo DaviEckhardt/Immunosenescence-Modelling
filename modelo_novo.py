@@ -4,16 +4,12 @@ from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 import os
 
-# Criar pasta para salvar imagens
 pasta_destino = os.path.join(os.path.dirname(__file__), "Images_aging_by_age_gender")
 os.makedirs(pasta_destino, exist_ok=True)
 
 t = np.linspace(0, 60, 300)
 solucoes = {}
 
-# ------------------------------------------------------------
-# Dados dos artigos (valores aproximados)
-# ------------------------------------------------------------
 
 # IL-6 (pg/mL)
 idades_il6 = [25, 45, 65, 75]
@@ -35,9 +31,6 @@ idades_b = [25, 45, 65, 75]
 b_naive_homens = [60, 50, 40, 35]   # %
 b_naive_mulheres = [65, 55, 35, 30] # %
 
-# ------------------------------------------------------------
-# Interpoladores
-# ------------------------------------------------------------
 interp_il6 = {
     "M": interp1d(idades_il6, il6_homens, kind="cubic", fill_value="extrapolate"),
     "F": interp1d(idades_il6, il6_mulheres, kind="cubic", fill_value="extrapolate")
@@ -55,9 +48,6 @@ interp_b = {
     "F": interp1d(idades_b, b_naive_mulheres, kind="linear", fill_value="extrapolate")
 }
 
-# ------------------------------------------------------------
-# Parâmetros do modelo
-# ------------------------------------------------------------
 params = {
     'πv': 6.80e-1,
     'cv1': 2.63e0,
@@ -106,9 +96,6 @@ labels = [
     "V", "Ap", "Apm", "Thn", "The", "Tkn", "Tke", "B", "Ps", "Pl", "Bm", "A", "Tprod", "I", "S", "NK"
 ]
 
-# ------------------------------------------------------------
-# Condições iniciais dependentes de idade/sexo
-# ------------------------------------------------------------
 def gerar_condicoes_iniciais(idade, sexo):
     Tprod_0 = interp_cd4[sexo](idade)
     I_0 = interp_il6[sexo](idade)
@@ -125,21 +112,18 @@ def gerar_condicoes_iniciais(idade, sexo):
         Tprod_0, I_0, S_0, NK_0
     ]
 
-# ------------------------------------------------------------
-# Modelo ODE
-# ------------------------------------------------------------
 def immune_response_aging(y, t, p, idade, sexo):
     V, Ap, Apm, Thn, The, Tkn, Tke, B, Ps, Pl, Bm, A, Tprod, I, S, NK = y
 
     μ_T_eff = p['μ_T'] * (1 + 0.02 * (idade - 20))
     if sexo == "F" and idade >= 50:
-        μ_T_eff *= 1.2  # menopausa acelera perda tímica
+        μ_T_eff *= 1.2  
 
     δth_eff = p['δth'] * (1 + p['γ_I'] * I + 0.005 * idade)
     dTprod = -μ_T_eff * Tprod
     dI = p['k_I'] - p['δ_I'] * I
     dS = p['σ_B'] * B + p['σ_T'] * The + p['σ_base'] * idade - p['δ_S'] * S
-    dNK = 0.01 * idade - 0.001 * NK  # dinâmica simplificada
+    dNK = 0.01 * idade - 0.001 * NK  
 
     βpl_eff = p['βpl'] * np.exp(-p['η_S'] * S)
 
@@ -159,9 +143,6 @@ def immune_response_aging(y, t, p, idade, sexo):
 
     return [dV, dAp, dApm, dThn, dThe, dTkn, dTke, dB, dPs, dPl, dBm, dA, dTprod, dI, dS, dNK]
 
-# ------------------------------------------------------------
-# Rodar simulações
-# ------------------------------------------------------------
 idades = [25, 45, 65]
 sexos = ["M", "F"]
 
@@ -171,9 +152,6 @@ for sexo in sexos:
         sol = odeint(lambda y, t: immune_response_aging(y, t, params, idade, sexo), y0, t)
         solucoes[(idade, sexo)] = sol
 
-# ------------------------------------------------------------
-# Plot
-# ------------------------------------------------------------
 for i, label in enumerate(labels):
     plt.figure(figsize=(8, 5))
     for sexo in sexos:

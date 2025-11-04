@@ -55,7 +55,7 @@ def plot_examples():
     # condições iniciais: pequeno foco de patógeno e zero em w,x,y
     y0 = [0.1, 0.0, 0.0, 0.01]   # w,x,y,z 
     ds = [0.08, 0.16, 0.205]     # valores usados no artigo 
-    fig, axes = plt.subplots(len(ds), 2, figsize=(12, 3.5*len(ds)))
+    fig, axes = plt.subplots(len(ds), 3, figsize=(12, 3.5*len(ds)))
     for i, dval in enumerate(ds):
         p = default_params.copy()
         p['d'] = dval
@@ -75,6 +75,13 @@ def plot_examples():
         ax2.plot(ts, y_inf, label=f'y (inflamação), d={dval}')
         ax2.set_xlabel("tempo")
         ax2.set_ylabel("y (inflamação)")
+        ax2.grid(True)
+        ax2.legend()
+        
+        ax2 = axes[i,2]
+        ax2.plot(ts, x, label=f'x (dano tecidual), d={dval}')
+        ax2.set_xlabel("tempo")
+        ax2.set_ylabel("x (dano tecidual)")
         ax2.grid(True)
         ax2.legend()
 

@@ -1,6 +1,10 @@
 import numpy as np
 from scipy.integrate import odeint
 import matplotlib.pyplot as plt
+import os
+
+outdir = os.path.join(os.path.dirname(__file__), "modelo_acoplado_figures_Ap")
+os.makedirs(outdir, exist_ok=True)
 
 params = {
     'πv': 6.80e-1,
@@ -40,7 +44,7 @@ params = {
     'Tkn0': 5e5,
     'B0': 2.5e5,
 
-    'a': 0.2, 'b': 0.2, 'c': 0.2, 'd': 0.08, 'e': 0.2, 'f': 2.0, 'g': 0.2,
+    'a': 0.2, 'b': 0.2, 'c': 0.2, 'd': 0.205, 'e': 0.2, 'f': 2.0, 'g': 0.2,
     'h': 2.0, 'k': 2.0, 'r': 1.0, 's': 0.0, 
 
     'H1': 1e-4, 'H2': 1e-7, 'H3': 1e-8,  
@@ -52,6 +56,7 @@ def coupled_model(y, t, p):
 
     V, Ap, Apm, Thn, The, Tkn, Tke, B, Ps, Pl, Bm, A, w, x, y_inf  = y
 
+    dV = 0
     dV_im = p['πv']*V - p['cv1']*V/(p['cv2'] + V) - p['kv1']*V*A - p['kv2']*V*Tke
     dAp = p['αap']*(p['Ap0'] - Ap) - p['βap']*Ap*(p['cap1']*V)/(p['cap2'] + V)
     dApm = p['βap']*Ap*(p['cap1']*V)/(p['cap2'] + V) - p['δapm']*Apm
@@ -69,7 +74,7 @@ def coupled_model(y, t, p):
     bw = p['B1'] * A + p['B2'] * Tke + p['B3'] * Ap
 
     dw = p['f'] * y_inf - p['k'] * w
-    dx = bw + p['c'] * V - p['g'] * x
+    dx = bw + p['c'] * dV - p['g'] * x
     dy = p['a'] * x - (p['d'] + p['e'] * y_inf) * y_inf
 
 
@@ -109,12 +114,14 @@ axes2[0,0].plot(t, A); axes2[0,0].set_title("Anticorpos (A)")
 axes2[0,1].plot(t, w); axes2[0,1].set_title("w (resposta imune)")
 axes2[1,0].plot(t, x); axes2[1,0].set_title("x (dano tecidual)")
 axes2[1,1].plot(t, Ap); axes2[1,1].set_title("Células Apresentadoras ingênuas (Ap)")
-axes2[2,0].plot(t, y_inf); axes2[2,0].set_title("citocias pró-inflamatórias (y_inf)")
+axes2[2,0].plot(t, y_inf); axes2[2,0].set_title("Citocinas pró-inflamatórias (y_inf)")
 axes2[2,1].plot(t, V); axes2[2,1].set_title("Vírus vacinal (V)")
 for ax in axes2.flat:
     ax.set_xlabel("Tempo (dias)")
     ax.set_ylabel("Nível relativo")
     ax.grid(True)
 plt.tight_layout()
+plt.savefig(os.path.join(outdir, "Teste.png"), dpi=200)
 plt.show()
+
 
