@@ -73,7 +73,7 @@ def coupled_model(y, t, p):
     hw = p['H1'] * A + p['H2'] * Tke + p['H3'] * Ap
     bw = p['B1'] * A + p['B2'] * Tke + p['B3'] * Ap
 
-    dw = p['f'] * y_inf - p['k'] * w
+    dw = p['s'] + p['f'] * y_inf - p['k'] * w
     dx = bw + p['c'] * dV - p['g'] * x
     dy = p['a'] * x - (p['d'] + p['e'] * y_inf) * y_inf
 
