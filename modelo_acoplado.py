@@ -51,6 +51,17 @@ params = {
     'B1': 1e-4, 'B2': 1e-7, 'B3': 1e-8  
 }
 
+def g_time(t):
+    return 0.2/ (1 + 0.05 * t) 
+
+def f_time(t):
+    return 8.0 / (1 + 0.2 * t)
+
+def d_time(t):
+    return 0.08 / (1 + 0.5 * t)
+
+def k(t):
+    return params['k'] / (1 + 1e-3 * t)
 
 def coupled_model(y, t, p):
 
@@ -72,11 +83,10 @@ def coupled_model(y, t, p):
 
     hw = p['H1'] * A + p['H2'] * Tke + p['H3'] * Ap
     bw = p['B1'] * A + p['B2'] * Tke + p['B3'] * Ap
-
-    dw = p['s'] + p['f'] * y_inf - p['k'] * w
-    dx = bw + p['c'] * dV - p['g'] * x
-    dy = p['a'] * x - (p['d'] + p['e'] * y_inf) * y_inf
-
+    
+    dw = p['s'] + f_time(t) * y_inf - k(t) * w
+    dx = bw + p['c'] * V - g_time(t) * x
+    dy = p['a'] * x - (d_time(t) + p['e'] * y_inf) * y_inf
 
     dV = (p['r'] * V - hw * V)
     #dV = (p['r'] * V - hw * V) + dV_im
