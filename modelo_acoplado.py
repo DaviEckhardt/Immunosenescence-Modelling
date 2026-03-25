@@ -51,18 +51,6 @@ params = {
     'B1': 1e-4, 'B2': 1e-7, 'B3': 1e-8  
 }
 
-def g_time(t):
-    return 0.2/ (1 + 0.05 * t) 
-
-def f_time(t):
-    return 8.0 / (1 + 0.2 * t)
-
-def d_time(t):
-    return 0.08 / (1 + 0.5 * t)
-
-def k(t):
-    return params['k'] / (1 + 1e-3 * t)
-
 def coupled_model(y, t, p):
 
     V, Ap, Apm, Thn, The, Tkn, Tke, B, Ps, Pl, Bm, A, w, x, y_inf  = y
@@ -82,10 +70,10 @@ def coupled_model(y, t, p):
 
     hw = p['H1'] * A + p['H2'] * Tke + p['H3'] * Ap
     bw = p['B1'] * A + p['B2'] * Tke + p['B3'] * Ap
-    
-    dw = p['s'] + f_time(t) * y_inf - k(t) * w
-    dx = bw + p['c'] * V - g_time(t) * x
-    dy = p['a'] * x - (d_time(t) + p['e'] * y_inf) * y_inf
+
+    dw = p['s'] + p['f'] * y_inf - p['k'] * w
+    dx = bw + p['c'] * V - p['g'] * x
+    dy = p['a'] * x - (p['d'] + p['e'] * y_inf) * y_inf
 
     dV = (p['r'] * V - hw * V)
     #dV = (p['r'] * V - hw * V) + dV_im
@@ -111,20 +99,20 @@ y0 = [
     0.0,        # y_inf (inflamação inicial)
 ]
 
-t = np.linspace(0, 400, 800)
+t = np.linspace(0, 200, 2000)
 
 
 sol = odeint(lambda y, t: coupled_model(y, t, params), y0, t)
 
-V, Ap, Apm, dThn, dThe, Tkn, Tke, dB, dPs, dPl, dBm, A ,w, x, y_inf = sol.T[:,300:500]
+V, Ap, Apm, dThn, dThe, Tkn, Tke, dB, dPs, dPl, dBm, A ,w, x, y_inf = sol.T
 
 fig2, axes2 = plt.subplots(3, 2, figsize=(10, 7))
-axes2[0,0].plot(t[300:500], A); axes2[0,0].set_title("Anticorpos (A)")
-axes2[0,1].plot(t[300:500], w); axes2[0,1].set_title("w (resposta imune)")
-axes2[1,0].plot(t[300:500], x); axes2[1,0].set_title("x (dano tecidual)")
-axes2[1,1].plot(t[300:500], Ap); axes2[1,1].set_title("Células Apresentadoras ingênuas (Ap)")
-axes2[2,0].plot(t[300:500], y_inf); axes2[2,0].set_title("Citocinas pró-inflamatórias (y_inf)")
-axes2[2,1].plot(t[300:500], V); axes2[2,1].set_title("Vírus vacinal (V)")
+axes2[0,0].plot(t, A); axes2[0,0].set_title("Anticorpos (A)")
+axes2[0,1].plot(t, w); axes2[0,1].set_title("w (resposta imune)")
+axes2[1,0].plot(t, x); axes2[1,0].set_title("x (dano tecidual)")
+axes2[1,1].plot(t, Ap); axes2[1,1].set_title("Células Apresentadoras ingênuas (Ap)")
+axes2[2,0].plot(t, y_inf); axes2[2,0].set_title("Citocinas pró-inflamatórias (y_inf)")
+axes2[2,1].plot(t, V); axes2[2,1].set_title("Vírus vacinal (V)")
 for ax in axes2.flat:
     ax.set_xlabel("Tempo (dias)")
     ax.set_ylabel("Nível relativo")

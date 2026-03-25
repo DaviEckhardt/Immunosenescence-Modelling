@@ -3,18 +3,18 @@ from scipy.integrate import odeint
 import matplotlib.pyplot as plt
 import os
 
-
 pasta_destino = os.path.join(os.path.dirname(__file__), "Images")
-
 os.makedirs(pasta_destino, exist_ok=True)
 
-print("teste")
 
+# Parâmetros calibrados para o cenário de Imunossenescência
 params = {
     'πv': 6.80e-1,
     'cv1': 2.63e0,
     'cv2': 6e-1,
-    'kv1': 4.82e-5,
+    
+    'kv1': 1.5e-5,   # Era 4.82e-5
+    
     'kv2': 7.48e-7,
     'αap': 2.5e-3,
     'βap': 5.5e-1,
@@ -32,8 +32,11 @@ params = {
     'αb': 6.0e0,
     'πb1': 4.83e-6,
     'πb2': 1.27e-8,
-    'βps': 6.72e-4,
-    'βpl': 5.61e-6,
+    
+    'βps': 2.0e-4,   # Era 6.72e-4
+
+    'βpl': 1.5e-6,   # Era 5.61e-6
+    
     'βbm': 1e-6,
     'δps': 2.0e0,
     'δpl': 2.4e-4,
@@ -48,8 +51,6 @@ params = {
     'Tkn0': 5e5,
     'B0': 2.5e5,
 }
-
-
 
 def immune_response(y, t, p):
     V, Ap, Apm, Thn, The, Tkn, Tke, B, Ps, Pl, Bm, A = y
@@ -80,9 +81,9 @@ sol = odeint(immune_response, y0, t, args=(params,))
 
 # Plotar os resultados
 labels = {
-    "V": "Vírus vacinal",
-    "Ap": "Células Apresentadoras de Antígeno - ingênuas",
-    "Apm": "Células Apresentadoras de Antígeno - maduras",
+    "V": "Vírus vacinal (Viremia)",
+    "Ap": "Células Apresentadoras - ingênuas",
+    "Apm": "Células Apresentadoras - maduras",
     "Thn": "Linfócitos T CD4+ não-ativados",
     "The": "Linfócitos T CD4+ efetores",
     "Tkn": "Linfócitos T CD8+ não-ativados",
@@ -97,13 +98,13 @@ labels = {
 chaves = list(labels.keys())
 for i, chave in enumerate(chaves):
     plt.figure(figsize=(7, 4))
-    plt.plot(t, sol[:, i], label=labels[chave], color='tab:blue')
-    plt.title(labels[chave])
+    plt.plot(t, sol[:, i], label=labels[chave], color='tab:red') # Mudei para vermelho para indicar idoso
+    plt.title(f"{labels[chave]} - Cenário Idoso")
     plt.xlabel("Tempo (dias)")
     plt.ylabel("Quantidade")
     plt.grid(True)
     plt.tight_layout()
     plt.legend()
-    caminho_arquivo = os.path.join(pasta_destino, f"{chave}.png")
+    caminho_arquivo = os.path.join(pasta_destino, f"{chave}_idoso.png")
     plt.savefig(caminho_arquivo, dpi=150)
-    plt.show()
+    plt.close() # Fechar a figura para não consumir muita memória

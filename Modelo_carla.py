@@ -75,11 +75,11 @@ cores = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple']
 
 
 t1 = np.concatenate([
-    np.linspace(0, 60, 300, endpoint=False),
+    np.linspace(0, 400, 4000, endpoint=False),
     np.linspace(60, 3650, 700)
 ])
 
-t2 = np.linspace(0, 60, 300)
+t2 = np.linspace(0, 400, 4000)
 
 # Condições iniciais
 # y0 = [724, 1e6, 0, 1e6, 0, 5e5, 0, 2.5e5, 0, 0, 0, 150]
