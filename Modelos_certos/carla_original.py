@@ -7,9 +7,6 @@ import os
 pasta_destino = os.path.join(os.path.dirname(__file__), "Images")
 
 os.makedirs(pasta_destino, exist_ok=True)
-
-print("teste")
-
 params = {
     'πv': 6.80e-1,
     'cv1': 2.63e0,
@@ -49,7 +46,22 @@ params = {
     'B0': 2.5e5,
 }
 
+param_keys = ['πv', 'kv1', 'kv2', 'αb', 'βps', 'βpl', 'βbm', 'δpl', 'B0', 'πb2']
 
+def immune_response_wrapper(X):
+    X = np.atleast_1d(X).flatten()
+    p = params.copy()
+    for i, key in enumerate(param_keys):
+        p[key] = X[i]
+    try:
+        t = np.linspace(0, 500, 5000)
+        sol = odeint(immune_response, y0, t, args=(p,), full_output=False)
+        result = np.max(sol[:, 11])
+        if not np.isfinite(result):
+            return 0.0
+        return result
+    except:
+        return 0.0
 
 def immune_response(y, t, p):
     V, Ap, Apm, Thn, The, Tkn, Tke, B, Ps, Pl, Bm, A = y
@@ -73,7 +85,7 @@ def immune_response(y, t, p):
 y0 = [724, 1e6, 0, 1e6, 0, 5e5, 0, 2.5e5, 0, 0, 0, 150]
 
 # Tempo de simulação (dias)
-t = np.linspace(0, 60, 300)
+t = np.linspace(0, 500, 50000)
 
 # Resolver o sistema
 sol = odeint(immune_response, y0, t, args=(params,))
