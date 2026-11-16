@@ -1,16 +1,18 @@
-import argparse
 import csv
 from pathlib import Path
-import time
+from secrets import randbits
+from uuid import uuid4
 
-import matplotlib
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from mpi4py import MPI
 import numpy as np
+from mpi4py import MPI
 from scipy.integrate import solve_ivp
 from SALib.sample import sobol as sobol_sample
 from SALib.analyze import sobol
+
+comm = MPI.COMM_WORLD
+rank = comm.Get_rank()
+world_size = comm.Get_size()
 
 # 1. Parâmetros base (os mesmos do seu modelo original)
 base_params = {
@@ -57,384 +59,315 @@ def coupled_model_ivp(t, y_vec, p):
 
 # 3. Definição do Problema para o SALib
 problem = {
-    'num_vars': 10,
-    'names': ['H1', 'H2', 'H3', 'B1', 'B2', 'B3', 'c', 'g', 'r', 'πps'],
+    'num_vars': 5,
+    'names': np.array(['c', 'g', 'B1', 'B2', 'H1']),
     'bounds': [
-        [0.5e-4, 1.5e-4],  # Limites para H1
-        [0.5e-9, 1.5e-9],  # Limites para H2
-        [0.5e-10, 1.5e-10],  # Limites para H3
-        [0.5e-4, 1.5e-4],  # Limites para B1
-        [0.5e-9, 1.5e-9],  # Limites para B2
-        [0.5e-10, 1.5e-10],  # Limites para B3
-        [0.1, 0.3],        # Limites para c
-        [0.1, 0.3],        # Limites para g
-        [0.5, 1.5],        # Limites para r
-        [1e-3, 3e-3],      # Limites para πps
+        [0.19, 0.21],        # Limites para c
+        [0.19, 0.21],        # Limites para g
+        [0.95e-4, 1.05e-4],  # Limites para B1
+        [0.95e-9, 1.05e-9],  # Limites para B2
+        [0.95e-10, 1.05e-10] # Limites para H1
     ]
 }
 
-# 4. Avaliação de uma amostra
+# 4. Geração das amostras para as três verificações
+N_VALUES = (10000,)
+MAX_N = max(N_VALUES)
+SEED = randbits(32) if rank == 0 else None
+SEED = comm.bcast(SEED, root=0)
+NUM_RESAMPLES = 1000
+NUM_RESAMPLES_TIME = 100
+param_values = sobol_sample.sample(
+    problem, MAX_N, calc_second_order=False, seed=SEED
+) if rank == 0 else None
+
+# 5. Avaliação do Modelo (Wrapper)
 y0 = [1.0, 1e6, 0, 1e6, 0, 5e5, 0, 2.5e5, 0, 0, 0, 150, 0.1, 0.0, 0.0]
 t_span = (0, 500)
 time_points = np.linspace(t_span[0], t_span[1], 101)
+state_names = (
+    'V', 'Ap', 'Apm', 'Thn', 'The', 'Tkn', 'Tke', 'B', 'Ps', 'Pl',
+    'Bm', 'A', 'w', 'x', 'y_inf',
+)
+output_dir = Path(__file__).with_name('graficos_sobol')
+run_id = uuid4().hex if rank == 0 else None
+run_id = comm.bcast(run_id, root=0)
+if rank == 0:
+    output_dir.mkdir(exist_ok=True)
+comm.Barrier()
+rank_csv_path = output_dir / f'.saidas_equacoes_{run_id}_rank_{rank:05d}.csv'
+equation_csv_path = output_dir / 'saidas_equacoes.csv'
+equation_csv_header = (
+    'simulacao', 'status', 'mensagem', *problem['names'], 'tempo',
+    *state_names, 'variaveis_nao_finitas',
+)
+sample_counts = [
+    MAX_N * (problem['num_vars'] + 2) // world_size
+    + (rank < MAX_N * (problem['num_vars'] + 2) % world_size)
+    for rank in range(world_size)
+]
+sample_displacements = np.cumsum([0, *sample_counts[:-1]]).tolist()
+local_sample_count = sample_counts[rank]
+local_param_values = np.empty((local_sample_count, problem['num_vars']))
 
-def evaluate_sample(X):
-    p = base_params.copy()
-    for name, value in zip(problem['names'], X):
-        p[name] = value
+comm.Scatterv(
+    [
+        param_values,
+        [count * problem['num_vars'] for count in sample_counts],
+        [offset * problem['num_vars'] for offset in sample_displacements],
+        MPI.DOUBLE,
+    ] if rank == 0 else None,
+    local_param_values,
+    root=0,
+)
 
-    sol = solve_ivp(
-        coupled_model_ivp,
-        t_span,
-        y0,
-        args=(p,),
-        method='LSODA',
-        max_step=1.0,
-        t_eval=time_points,
+local_Y_time = np.empty((local_sample_count, len(time_points)))
+local_Y_peak = np.empty(local_sample_count)
+local_errors = []
+
+if rank == 0:
+    print(
+        f"Iniciando {MAX_N * (problem['num_vars'] + 2):,} simulações "
+        f"em {world_size} processos para "
+        f"N={', '.join(f'{n:,}' for n in N_VALUES)} "
+        f"(semente={SEED})..."
     )
-    if not sol.success or not np.isfinite(sol.y).all():
-        raise RuntimeError(sol.message)
 
-    return sol.y[13, :].copy()
+with rank_csv_path.open('w', newline='', encoding='utf-8') as csv_file:
+    writer = csv.writer(csv_file)
+    writer.writerow(equation_csv_header)
+    for local_index, X in enumerate(local_param_values):
+        simulation_index = sample_displacements[rank] + local_index
+        p = base_params.copy()
+        p['c'], p['g'], p['B1'], p['B2'], p['H1'] = X
 
-
-def save_results(output_dir, indices):
-    output_dir.mkdir(parents=True, exist_ok=True)
-    names = problem['names']
-    s1 = indices['S1']
-    st = indices['ST']
-    s1_conf = indices['S1_conf']
-    st_conf = indices['ST_conf']
-
-    csv_path = output_dir / "indices_sobol.csv"
-    with csv_path.open("w", newline="", encoding="utf-8") as csv_file:
-        writer = csv.writer(csv_file)
-        header = ["tempo_dias"]
-        for name in names:
-            header.extend((f"S1_{name}", f"S1_conf_{name}", f"ST_{name}", f"ST_conf_{name}"))
-        writer.writerow(header)
-        for time_index, time_value in enumerate(time_points):
-            row = [time_value]
-            for parameter_index in range(len(names)):
-                row.extend((
-                    s1[parameter_index, time_index],
-                    s1_conf[parameter_index, time_index],
-                    st[parameter_index, time_index],
-                    st_conf[parameter_index, time_index],
-                ))
-            writer.writerow(row)
-
-    for index_name, values, errors, color in (
-        ("S1", s1, s1_conf, "tab:blue"),
-        ("ST", st, st_conf, "tab:orange"),
-    ):
-        fig, ax = plt.subplots(figsize=(9, 5))
-        for parameter_index, name in enumerate(names):
-            line = ax.plot(
-                time_points,
-                values[parameter_index],
-                label=name,
-                color=f"C{parameter_index}",
-            )[0]
-            ax.fill_between(
-                time_points,
-                values[parameter_index] - errors[parameter_index],
-                values[parameter_index] + errors[parameter_index],
-                color=line.get_color(),
-                alpha=0.15,
-            )
-        ax.set_xlabel("Tempo (dias)")
-        ax.set_ylabel(f"Índice {index_name}")
-        ax.set_title(f"Evolução temporal dos índices {index_name} de Sobol")
-        ax.axhline(0, color="black", linewidth=0.8)
-        ax.legend(title="Parâmetro")
-        ax.grid(True, alpha=0.3)
-        fig.tight_layout()
-        fig.savefig(output_dir / f"{index_name}_tempo.png", dpi=200)
-        plt.close(fig)
-
-    for i, name in enumerate(names):
-        fig, ax = plt.subplots(figsize=(5, 4))
-        for index_name, values, errors, color in (
-            ("S1", s1, s1_conf, "tab:blue"),
-            ("ST", st, st_conf, "tab:orange"),
-        ):
-            ax.plot(time_points, values[i], label=index_name, color=color)
-            ax.fill_between(
-                time_points,
-                values[i] - errors[i],
-                values[i] + errors[i],
-                color=color,
-                alpha=0.15,
-            )
-        ax.set_xlabel("Tempo (dias)")
-        ax.set_ylabel("Índice de sensibilidade")
-        ax.set_title(f"Evolução temporal dos índices de {name}")
-        ax.axhline(0, color="black", linewidth=0.8)
-        ax.legend()
-        ax.grid(True, alpha=0.3)
-        fig.tight_layout()
-        fig.savefig(output_dir / f"sobol_temporal_{name}.png", dpi=200)
-        plt.close(fig)
-
-
-def analyze_outputs(Y, seed):
-    indices = {
-        key: np.full(
-            (problem['num_vars'], len(time_points)),
-            np.nan,
+        sol = solve_ivp(
+            coupled_model_ivp,
+            t_span,
+            y0,
+            args=(p,),
+            method='LSODA',
+            max_step=1.0,
+            t_eval=time_points,
         )
-        for key in ("S1", "ST", "S1_conf", "ST_conf")
-    }
-    for time_index in range(len(time_points)):
-        output_at_time = Y[:, time_index]
-        if np.var(output_at_time) == 0.0:
-            continue
-        time_indices = sobol.analyze(
-            problem,
-            output_at_time,
-            calc_second_order=False,
-            num_resamples=100,
-            seed=seed + time_index,
-        )
-        for key in indices:
-            indices[key][:, time_index] = time_indices[key]
-    return indices
 
+        finite_mask = np.isfinite(sol.y)
+        has_non_finite = not finite_mask.all()
+        if not sol.success or has_non_finite:
+            if not sol.success and has_non_finite:
+                status = 'falha_solver_e_valores_nao_finitos'
+            elif not sol.success:
+                status = 'falha_solver'
+            else:
+                status = 'valores_nao_finitos'
+            details = []
+            if not sol.success:
+                details.append(sol.message)
+            if has_non_finite:
+                bad_state_indices = np.flatnonzero((~finite_mask).any(axis=1))
+                bad_state_names = [state_names[index] for index in bad_state_indices]
+                details.append(
+                    'Valores não finitos em: ' + ', '.join(bad_state_names)
+                )
+            local_errors.append(
+                f"Simulação {simulation_index + 1}: {'; '.join(details)}"
+            )
+        else:
+            status = 'ok'
 
-def save_convergence(output_dir, sample_sizes, results):
-    output_dir.mkdir(parents=True, exist_ok=True)
-    csv_path = output_dir / "convergencia.csv"
-    plot_data = {}
-    with csv_path.open("w", newline="", encoding="utf-8") as csv_file:
-        writer = csv.writer(csv_file)
-        writer.writerow((
-            "N_anterior", "N_atual", "parametro",
-            "RMSE_S1", "max_delta_S1", "S1_dentro_IC_combinado_pct",
-            "RMSE_ST", "max_delta_ST", "ST_dentro_IC_combinado_pct",
-        ))
-        for previous_n, current_n in zip(sample_sizes, sample_sizes[1:]):
-            previous = results[previous_n]
-            current = results[current_n]
-            plot_data[(previous_n, current_n)] = {"S1": [], "ST": []}
-            for parameter_index, name in enumerate(problem['names']):
-                row_values = []
-                for index_name in ("S1", "ST"):
-                    estimate_key = index_name
-                    confidence_key = f"{index_name}_conf"
-                    previous_estimate = previous[estimate_key][parameter_index]
-                    current_estimate = current[estimate_key][parameter_index]
-                    difference = np.abs(current_estimate - previous_estimate)
-                    combined_confidence = np.hypot(
-                        previous[confidence_key][parameter_index],
-                        current[confidence_key][parameter_index],
-                    )
-                    valid = (
-                        np.isfinite(difference)
-                        & np.isfinite(combined_confidence)
-                    )
-                    if np.any(valid):
-                        rmse = float(np.sqrt(np.mean(difference[valid] ** 2)))
-                        max_difference = float(np.max(difference[valid]))
-                        within_confidence = float(
-                            100.0 * np.mean(
-                                difference[valid] <= combined_confidence[valid]
-                            )
-                        )
-                    else:
-                        rmse = max_difference = within_confidence = float("nan")
-                    row_values.extend((rmse, max_difference, within_confidence))
-                    plot_data[(previous_n, current_n)][index_name].append(rmse)
+        if sol.t.size:
+            for time_value, state_values in zip(sol.t, sol.y.T):
+                bad_values = [
+                    state_names[index]
+                    for index, value in enumerate(state_values)
+                    if not np.isfinite(value)
+                ]
                 writer.writerow((
-                    previous_n,
-                    current_n,
-                    name,
-                    *row_values,
+                    simulation_index + 1,
+                    status,
+                    sol.message,
+                    *X,
+                    time_value,
+                    *state_values,
+                    '|'.join(bad_values),
                 ))
+        else:
+            writer.writerow((
+                simulation_index + 1,
+                status,
+                sol.message,
+                *X,
+                '',
+                *([np.nan] * len(state_names)),
+                '|'.join(state_names),
+            ))
 
-    fig, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
-    for ax, index_name in zip(axes, ("S1", "ST")):
-        for (previous_n, current_n), values in plot_data.items():
-            ax.plot(
-                problem['names'],
-                values[index_name],
-                marker="o",
-                label=f"N={previous_n:,} → {current_n:,}",
-            )
-        ax.set_ylabel(f"RMSE temporal de {index_name}")
-        ax.set_title(f"Convergência de {index_name} entre tamanhos de amostra")
-        ax.grid(True, alpha=0.3)
-        ax.legend()
-    axes[-1].set_xlabel("Parâmetro")
-    fig.tight_layout()
-    fig.savefig(output_dir / "convergencia_indices.png", dpi=200)
-    plt.close(fig)
+        if not sol.success or has_non_finite:
+            local_Y_time[local_index, :] = np.nan
+            local_Y_peak[local_index] = np.nan
+            continue
 
+        x_values = sol.y[13, :]
+        local_Y_time[local_index, :] = x_values
+        local_Y_peak[local_index] = np.max(x_values)
 
-def main():
-    parser = argparse.ArgumentParser(description="Análise MPI de sensibilidade de Sobol.")
-    sample_group = parser.add_mutually_exclusive_group()
-    sample_group.add_argument(
-        "--N",
-        type=int,
-        help="Executa uma análise com N amostras base (útil para testes).",
-    )
-    sample_group.add_argument(
-        "--Ns",
-        type=int,
-        nargs=3,
-        metavar=("N1", "N2", "N3"),
-        help="Executa três análises crescentes e compara sua convergência.",
-    )
-    parser.add_argument(
-        "--outdir",
-        type=Path,
-        default=Path(__file__).resolve().parent / "resultados_sobol",
-        help="Diretório para salvar o CSV e os gráficos.",
-    )
-    args = parser.parse_args()
-    if args.N is not None and args.N < 2:
-        parser.error("--N deve ser pelo menos 2.")
-    if args.Ns is not None and (
-        any(N < 2 for N in args.Ns)
-        or args.Ns[0] >= args.Ns[1]
-        or args.Ns[1] >= args.Ns[2]
-    ):
-        parser.error("--Ns deve conter três inteiros crescentes, todos >= 2.")
+comm.Barrier()
+csv_error_message = None
+if rank == 0:
+    try:
+        with equation_csv_path.open('w', newline='', encoding='utf-8') as csv_file:
+            writer = csv.writer(csv_file)
+            writer.writerow(equation_csv_header)
+            for process_rank in range(world_size):
+                process_csv_path = (
+                    output_dir
+                    / f'.saidas_equacoes_{run_id}_rank_{process_rank:05d}.csv'
+                )
+                with process_csv_path.open(
+                    'r', newline='', encoding='utf-8'
+                ) as process_csv_file:
+                    reader = csv.reader(process_csv_file)
+                    next(reader, None)
+                    writer.writerows(reader)
+                process_csv_path.unlink()
+        print(f'Saídas das equações salvas em: {equation_csv_path}')
+    except (OSError, csv.Error) as error:
+        csv_error_message = f'Não foi possível salvar as saídas das equações: {error}'
+csv_error_message = comm.bcast(csv_error_message, root=0)
+if csv_error_message:
+    raise RuntimeError(csv_error_message)
 
-    comm = MPI.COMM_WORLD
-    rank = comm.Get_rank()
-    size = comm.Get_size()
-    seed = 2026
-    if args.N is not None:
-        sample_sizes = (args.N,)
-    elif args.Ns is not None:
-        sample_sizes = tuple(args.Ns)
-    else:
-        sample_sizes = (32768, 65536, 131072)
-    results = {}
+time_counts = [count * len(time_points) for count in sample_counts]
+time_displacements = [
+    offset * len(time_points) for offset in sample_displacements
+]
+if rank == 0:
+    Y_time = np.empty((sum(sample_counts), len(time_points)))
+    Y_peak = np.empty(sum(sample_counts))
+else:
+    Y_time = None
+    Y_peak = None
 
-    if rank == 0 and any(N & (N - 1) for N in sample_sizes):
-        print(
-            "Aviso: os N escolhidos não são potências de 2. "
-            "A análise será executada com esses tamanhos, mas sequências Sobol "
-            "têm melhor balanceamento com N potência de 2."
+comm.Gatherv(
+    local_Y_time.ravel(),
+    [
+        Y_time,
+        time_counts,
+        time_displacements,
+        MPI.DOUBLE,
+    ] if rank == 0 else None,
+    root=0,
+)
+comm.Gatherv(
+    local_Y_peak,
+    [Y_peak, sample_counts, sample_displacements, MPI.DOUBLE]
+    if rank == 0 else None,
+    root=0,
+)
+all_errors = comm.gather(local_errors, root=0)
+error_message = None
+if rank == 0:
+    errors = [error for process_errors in all_errors for error in process_errors]
+    if errors:
+        error_message = '\n'.join(errors)
+error_message = comm.bcast(error_message, root=0)
+if error_message:
+    raise RuntimeError(error_message)
+
+# 6. Cálculo e gráficos dos índices para cada tamanho amostral
+if rank == 0:
+    variable_name = 'x'
+    for N in N_VALUES:
+        sample_count = N * (problem['num_vars'] + 2)
+        print(f"\nVerificação com N={N:,} (2^{N.bit_length() - 1}):")
+
+        Si = sobol.analyze(
+            problem,
+            Y_peak[:sample_count],
+            calc_second_order=False,
+            num_resamples=NUM_RESAMPLES,
+            seed=SEED,
         )
 
-    for N in sample_sizes:
-        error_message = None
-        if rank == 0:
-            try:
-                param_values = sobol_sample.sample(
-                    problem,
-                    N,
-                    calc_second_order=False,
-                    seed=seed,
-                )
-                chunks = np.array_split(param_values, size)
-                print(
-                    f"Iniciando análise N={N:,}: {len(param_values):,} "
-                    f"simulações em {size} processo(s) MPI..."
-                )
-            except Exception as exc:
-                chunks = None
-                error_message = f"Falha ao gerar amostras Sobol para N={N}: {exc}"
-        else:
-            chunks = None
+        print("Parâmetro | S1 (IC 95%)                 | ST (IC 95%)")
+        for i, name in enumerate(problem['names']):
+            s1_low = Si['S1'][i] - Si['S1_conf'][i]
+            s1_high = Si['S1'][i] + Si['S1_conf'][i]
+            st_low = Si['ST'][i] - Si['ST_conf'][i]
+            st_high = Si['ST'][i] + Si['ST_conf'][i]
+            print(
+                f"{name:9} | {Si['S1'][i]:.4f} [{s1_low:.4f}, {s1_high:.4f}]"
+                f" | {Si['ST'][i]:.4f} [{st_low:.4f}, {st_high:.4f}]"
+            )
+            if s1_low <= 0.0 <= s1_high:
+                print(f"          | S1 de {name} não é distinguível de zero com este N.")
 
-        error_message = comm.bcast(error_message, root=0)
-        if error_message:
-            raise RuntimeError(error_message)
-        local_samples = comm.scatter(chunks, root=0)
+        Si_time = {
+            index: np.full((len(time_points), problem['num_vars']), np.nan)
+            for index in ('S1', 'S1_conf', 'ST', 'ST_conf')
+        }
+        for time_index in range(len(time_points)):
+            output = Y_time[:sample_count, time_index]
+            if np.std(output) == 0.0:
+                continue
 
-        local_outputs = np.empty(
-            (len(local_samples), len(time_points)),
-            dtype=np.float64,
+            time_result = sobol.analyze(
+                problem,
+                output,
+                calc_second_order=False,
+                num_resamples=NUM_RESAMPLES_TIME,
+                seed=SEED,
+            )
+            for index in Si_time:
+                Si_time[index][time_index, :] = time_result[index]
+
+        plots = [('geral', range(problem['num_vars']))]
+        plots.extend(
+            (name, [parameter_index])
+            for parameter_index, name in enumerate(problem['names'])
         )
-        local_error = None
-        total_simulations = N * (problem['num_vars'] + 2)
-        progress_steps = min(100, max(1, total_simulations // size))
-        local_batches = np.array_split(local_samples, progress_steps)
-        completed_local = 0
-        start_time = time.perf_counter()
 
-        for batch in local_batches:
-            if local_error is None:
-                for X in batch:
-                    try:
-                        local_outputs[completed_local, :] = evaluate_sample(X)
-                        completed_local += 1
-                    except Exception as exc:
-                        local_error = (
-                            f"Rank {rank}, simulação local "
-                            f"{completed_local + 1}, N={N}: {exc}"
-                        )
-                        break
+        sample_output_dir = output_dir / f'N_{N}'
+        sample_output_dir.mkdir(exist_ok=True)
+        s1_sum_by_time = np.sum(Si_time['S1'], axis=1)
+        csv_path = sample_output_dir / 'soma_S1_tempo.csv'
+        with csv_path.open('w', newline='', encoding='utf-8') as csv_file:
+            writer = csv.writer(csv_file)
+            writer.writerow(('tempo', 'soma_S1'))
+            writer.writerows(zip(time_points, s1_sum_by_time))
 
-            completed_global = comm.allreduce(completed_local, op=MPI.SUM)
-            if rank == 0:
-                progress = 100.0 * completed_global / total_simulations
-                elapsed = time.perf_counter() - start_time
-                print(
-                    f"\rN={N:,} | progresso: {progress:6.2f}% "
-                    f"({completed_global:,}/{total_simulations:,}) "
-                    f"| decorrido: {elapsed / 60:.1f} min",
-                    end="",
-                    flush=True,
-                )
-        if rank == 0:
-            print(flush=True)
+        print("Tempo | Soma dos índices S1")
+        for time_value, s1_sum in zip(time_points, s1_sum_by_time):
+            print(f"{time_value:.2f} | {s1_sum:.6f}")
+        print(f"Soma dos índices S1 salva em: {csv_path}")
 
-        errors = comm.allgather(local_error)
-        error_message = next((message for message in errors if message), None)
-        if error_message:
-            raise RuntimeError(error_message)
+        for plot_name, parameter_indices in plots:
+            fig, axes = plt.subplots(2, 1, figsize=(11, 8), sharex=True)
+            for parameter_index in parameter_indices:
+                name = problem['names'][parameter_index]
+                s1 = Si_time['S1'][:, parameter_index]
+                s1_conf = Si_time['S1_conf'][:, parameter_index]
+                st = Si_time['ST'][:, parameter_index]
+                st_conf = Si_time['ST_conf'][:, parameter_index]
 
-        if rank == 0:
-            Y = np.empty(
-                (N * (problem['num_vars'] + 2), len(time_points)),
-                dtype=np.float64,
+                axes[0].plot(time_points, s1, label=name)
+                axes[0].fill_between(time_points, s1 - s1_conf, s1 + s1_conf, alpha=0.15)
+                axes[1].plot(time_points, st, label=name)
+                axes[1].fill_between(time_points, st - st_conf, st + st_conf, alpha=0.15)
+
+            axes[0].set_ylabel('Índice de primeira ordem (S1)')
+            axes[1].set_ylabel('Índice de ordem total (ST)')
+            axes[1].set_xlabel('Tempo')
+            for axis in axes:
+                axis.grid(True, alpha=0.3)
+                axis.legend(title='Parâmetro')
+
+            fig.suptitle(
+                f'Índices de Sobol ao longo do tempo para {variable_name} - '
+                f'{plot_name} (N={N:,})'
             )
-            row_counts = [len(chunk) for chunk in chunks]
-            counts = np.asarray(
-                [count * len(time_points) for count in row_counts],
-                dtype=np.int32,
-            )
-            displacements = np.zeros(size, dtype=np.int32)
-            if size > 1:
-                displacements[1:] = np.cumsum(counts[:-1])
-            receive_spec = [Y, counts, displacements, MPI.DOUBLE]
-        else:
-            Y = None
-            receive_spec = None
-
-        comm.Gatherv(local_outputs, receive_spec, root=0)
-
-        error_message = None
-        if rank == 0:
-            try:
-                if not np.isfinite(Y).all():
-                    raise RuntimeError(
-                        f"A saída do modelo contém valores não finitos para N={N}."
-                    )
-                indices = analyze_outputs(Y, seed)
-                save_results(args.outdir / f"N_{N}", indices)
-                results[N] = indices
-                print(
-                    f"Análise N={N:,} concluída; resultados em "
-                    f"{(args.outdir / f'N_{N}').resolve()}"
-                )
-            except Exception as exc:
-                error_message = f"Falha na análise N={N}: {exc}"
-
-        error_message = comm.bcast(error_message, root=0)
-        if error_message:
-            raise RuntimeError(error_message)
-
-    if rank == 0 and len(sample_sizes) > 1:
-        save_convergence(args.outdir, sample_sizes, results)
-        print(f"Comparação de convergência salva em: {args.outdir.resolve()}")
-
-
-if __name__ == "__main__":
-    main()
+            fig.tight_layout()
+            output_path = sample_output_dir / f'sobol_indices_{plot_name}.png'
+            fig.savefig(output_path, dpi=300, bbox_inches='tight')
+            plt.close(fig)
+            print(f"Gráfico salvo em: {output_path}")

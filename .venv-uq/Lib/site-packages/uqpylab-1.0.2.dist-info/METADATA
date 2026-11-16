@@ -1,0 +1,59 @@
+Metadata-Version: 2.1
+Name: uqpylab
+Version: 1.0.2
+Summary: Official UQCloud python client: cloud-based uncertainty quantification in python with UQLab.
+License: BSD
+Author: C. Lataniotis
+Requires-Python: >=3.9
+Classifier: License :: Other/Proprietary License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Dist: appdirs (>=1.4.4)
+Requires-Dist: ipython (>=8.7.0)
+Requires-Dist: ipywidgets (>=8.0.4)
+Requires-Dist: matplotlib (>=3.5.2)
+Requires-Dist: numpy (>=1.21.6,<2)
+Requires-Dist: pandas (>=1.3.5)
+Requires-Dist: plotly (>=5.11.0)
+Requires-Dist: requests (>=2.28.2)
+Requires-Dist: scipy (>=1.10.0)
+Description-Content-Type: text/markdown
+
+# UQ[py]Lab
+UQ[py]Lab is the official python client of the UQCloud project, which aims at providing a cloud-based, language agnostic API to the [UQLab](https://uqlab.com) uncertainty quantification framework. 
+
+
+## Before you start
+
+Because of its cloud-based nature, UQ[py]Lab requires an authentication token, which can be freely obtained by registering for beta testing at the UQ[py]Lab website: [https://uqpylab.uq-cloud.io](https://uqpylab.uq-cloud.io)
+
+After registration, you will find all the information you need to connect to the UQCloud servers at your personal profile page on [https://uqpylab.uq-cloud.io](https://uqpylab.uq-cloud.io).
+
+## Installation
+
+To install the package in your local Python environment, execute the following command:
+
+```bash
+pip install uqpylab
+```
+
+**Notes**:
+
+- UQ[py]Lab requires Python version >= 3.9
+- It is highly recommended to install UQ[py]Lab in a new Python virtual environment
+
+## First Steps
+
+To get started with UQ[py]Lab, we strongly recommend new users to go peruse the following resources:
+
+1) The Getting started guide at: https://uqpylab.uq-cloud.io/getting-started
+
+2) Some examples, related to their application of interest: https://uqpylab.uq-cloud.io/examples
+
+## License
+
+UQ[py]Lab is free software, published under the open source [BSD 3-clause license](https://opensource.org/license/bsd-3-clause/).
+

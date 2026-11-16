@@ -1,0 +1,3 @@
+export JUPYTER_PLATFORM_DIRS=1
+echo $JUPYTER_PLATFORM_DIRS
+jupyter --paths
